@@ -42,21 +42,28 @@ module uart_rx #(
 	 localparam LP_SYS_CLK_hz = 10**(9)/2;
 	 localparam LP_CLK_2_BAUD_ratio = LP_SYS_CLK_hz / P_BAUD;
 	 localparam LP_SLOW_CLOCK_PRESCALER_BITS = 16; //ceil(log2(LP_CLK_2_BAUD_ratio))
+	 localparam LP_READER_COUNTER = 4; //ceil(log2(P_UART_WIDTH + 2))
 
 //// Wires and registers
-	 wire write_enable;
 	 wire int_reset;
 	 wire init_counter_ready;
 	 wire slow_clock_pulse;
+	 wire start_bit_read_now;
+	 wire stop_bit_read_now;
+	 reg write_enable;
 	 reg [P_UART_WIDTH - 1 : 0] fifo_data_in;
 	 reg reg_error;
 	 reg [LP_log_N_STATES - 1 : 0] reg_state;
 	 reg [LP_LOG_CYCLES_TO_RESET - 1 : 0] init_counter;
 	 reg [LP_SLOW_CLOCK_PRESCALER_BITS - 1 : 0] slow_clock_counter;
+	 reg [LP_READER_COUNTER - 1 : 0] reader_counter;
 //// Assignments
 	 assign init_counter_ready = init_counter == P_CYCLES_TO_RESET;
 	 assign error = reg_error;
+	 assign int_reset = reset;
 	 assign slow_clock_pulse = slow_clock_counter == LP_CLK_2_BAUD_ratio;
+	 assign start_bit_read_now = reader_counter == 0;
+	 assign stop_bit_read_now = reader_counter == P_UART_WIDTH + 1;
 //// FIFO instanciation	 
 	 fifo_8x16 your_instance_name (
 	  .clk(CLK), // input clk
@@ -72,75 +79,105 @@ module uart_rx #(
 //// FSM tasks
 	task T_ERROR;
 	begin
-		// Flow ctrl
-		reg_state <= reset ? S_INIT : S_ERROR;
 		// Outputs
 		reg_error <= 1'b1;
-		// Actions
-		init_counter <= 0;
-		slow_clock_counter <= 0;
-
 	end
 	endtask
 	
 	task T_INIT;
 	begin
-		// Flow ctrl
-		if (reset) begin
-			 reg_state <= reset;
-		end
-		else begin
-			 case ({init_counter_ready, serial_in})
-				  2'b01 ,
-				  2'b00 ,
-				  2'b10 : reg_state <= S_INIT;
-				  2'b11 : reg_state <= S_IDLE;
-			 endcase
-		end
+		// Flow ctrl & Actions
+		 case ({init_counter_ready, serial_in})
+			  2'b01 : begin
+					init_counter <= init_counter + slow_clock_pulse;
+					reg_state <= S_INIT;
+			  end
+			  2'b00 ,
+			  2'b10 : begin
+					init_counter <= 0;
+					slow_clock_counter <= 0;
+					reg_state <= S_INIT;
+			  end
+			  2'b11 : begin
+					reg_state <= S_IDLE;
+			  end
+		 endcase
 		// Outputs
 		reg_error <= 1'b0;
-		// Actions
-		if (reset) begin
-			 init_counter <= 0;
-			 slow_clock_counter <= 0;
-		end
-		else begin
-			 if ({init_counter_ready, serial_in} == 2'b01) begin
-				  init_counter <= init_counter + slow_clock_pulse;
-			 end
-			 else begin
-				  init_counter <= 0;
-				  slow_clock_counter <= 0;
-			 end
-			 
-		end
 	end
 	endtask
 	
 	task T_IDLE;
 	begin
-		// Flow ctrl
+		// Flow ctrl & actions
+		 if (serial_in) begin
+			  reg_state <= S_IDLE;
+		 end
+		 else begin
+			  slow_clock_counter <= LP_CLK_2_BAUD_ratio / 2;
+			  reg_state <= S_READ;
+		 end
+		 write_enable <= 0;
 		// Outputs
-		// Actions
+		reg_error <= 1'b0;
 	end
 	endtask
 
 	task T_READ;
 	begin
-		// Flow ctrl
+		// Flow ctrl & Actions
+		if (slow_clock_pulse) begin
+			 case (reader_counter) 
+				  0: begin
+					   reg_state <= S_READ;
+						reader_counter <= reader_counter + 1;
+				  end
+				  P_UART_WIDTH + 1: begin
+					   reg_state <= serial_in ? S_IDLE : S_ERROR;
+						write_enable <= serial_in ? 1 : 0;
+						reader_counter <= 0;
+				  end
+				  default : begin
+						reg_state <= S_READ;
+						reader_counter <= reader_counter + 1;
+						fifo_data_in[reader_counter - 1] <= serial_in;
+				  end
+			 endcase
+		end
+		else begin
+			 reg_state <= S_READ;
+		end
 		// Outputs
+		reg_error <= 1'b0;
 		// Actions
+	end
+	endtask
+	
+	task T_RESET;
+	begin
+		 init_counter <= 0;
+		 write_enable <= 0;
+		 slow_clock_counter <= 0;
+		 reader_counter <= 0;
+		 fifo_data_in <= 0;
+		 reg_error <= 0;
+		 reg_state <= S_INIT;
 	end
 	endtask
 	
 //// FSM always block
 	 always @(posedge CLK) begin
-		  case (reg_state)
-				S_ERROR: T_ERROR();
-				S_INIT: T_INIT();
-				S_IDLE: T_IDLE();
-				S_READ: T_READ();
-		  endcase
+		  if (reset) begin
+				T_RESET();
+		  end
+		  else begin
+			  case (reg_state)
+					S_ERROR: T_ERROR();
+					S_INIT: T_INIT();
+					S_IDLE: T_IDLE();
+					S_READ: T_READ();
+			  endcase
+		  end
 	 end
 	 
 //// slow clock handling 
@@ -148,10 +185,4 @@ module uart_rx #(
 		  slow_clock_counter = slow_clock_pulse ? 0 : slow_clock_counter + 1;
 	 end
 
-//// Initalize sequence 
-	 always @(posedge CLK) begin
-		  if (reset) begin
-				reg_state <= S_INIT;
-		  end
-	 end
 endmodule
