@@ -33,11 +33,14 @@ module uart_rx #(
     output [P_UART_WIDTH / 2 - 1:0] data_out_msd,
     output [P_UART_WIDTH / 2 - 1:0] data_out_lsd
     );
+	 // FSM states
 	 localparam S_ERROR = 2'b00;
 	 localparam S_INIT = 2'b01;
 	 localparam S_IDLE = 2'b10;
 	 localparam S_READ = 2'b11;
 	 localparam LP_log_N_STATES = 2;
+	 
+	 // other necessary localparams
 	 localparam LP_LOG_CYCLES_TO_RESET = 4;
 	 localparam LP_SYS_CLK_hz = 10**(7)/2;
 	 localparam LP_CLK_2_BAUD_ratio = LP_SYS_CLK_hz / P_BAUD;
@@ -48,8 +51,7 @@ module uart_rx #(
 	 wire int_reset;
 	 wire init_counter_ready;
 	 wire slow_clock_pulse;
-	 wire start_bit_read_now;
-	 wire stop_bit_read_now;
+	 
 	 reg write_enable;
 	 reg [P_UART_WIDTH - 1 : 0] fifo_data_in;
 	 reg reg_error;
@@ -57,6 +59,7 @@ module uart_rx #(
 	 reg [LP_LOG_CYCLES_TO_RESET - 1 : 0] init_counter;
 	 reg [LP_SLOW_CLOCK_PRESCALER_BITS - 1 : 0] slow_clock_counter;
 	 reg [LP_READER_COUNTER - 1 : 0] reader_counter;
+	 
 //// Assignments
 	 assign init_counter_ready = slow_clock_pulse & (init_counter == P_CYCLES_TO_RESET - 1);
 	 assign error = reg_error;
@@ -64,6 +67,7 @@ module uart_rx #(
 	 assign slow_clock_pulse = slow_clock_counter == (LP_CLK_2_BAUD_ratio - 1);
 	 assign start_bit_read_now = reader_counter == 0;
 	 assign stop_bit_read_now = reader_counter == P_UART_WIDTH + 1;
+	 
 //// FIFO instanciation	 
 	 fifo_8x16 your_instance_name (
 	  .clk(CLK), // input clk
@@ -87,6 +91,9 @@ module uart_rx #(
 	task T_INIT;
 	begin
 		// Flow ctrl & Actions
+		// The flow ctrl of the INIT state is detemined by:
+			// serial_in :INIT state exits only ifserial_in is high for 10 slow cycles. 
+			// init_counter_ready : pin 1 high only if the number of cycles has reached 10.
 		 case ({init_counter_ready, serial_in})
 			  2'b01 : begin
 					init_counter <= init_counter + slow_clock_pulse;
@@ -110,6 +117,7 @@ module uart_rx #(
 	task T_IDLE;
 	begin
 		// Flow ctrl & actions
+		// The only variable relevant to the flow control of the state is the serial_in input. 
 		 if (serial_in) begin
 			  reg_state <= S_IDLE;
 		 end
@@ -128,6 +136,10 @@ module uart_rx #(
 		// Flow ctrl & Actions
 		if (slow_clock_pulse) begin
 			 case (reader_counter) 
+				// Three clauses in this branching correspond to (in order)
+				//// 1. start bit
+				//// 2. data bits
+				//// 3. stop bit
 				  0: begin
 					   reg_state <= S_READ;
 						reader_counter <= reader_counter + 1;
@@ -152,7 +164,8 @@ module uart_rx #(
 	end
 	endtask
 	
-	task T_RESET;
+	task T_RESET; //This task is being called whenever the reset pin is high, regardless of the state 
+					  //or other pins. 
 	begin
 		 init_counter <= 0;
 		 write_enable <= 0;
@@ -165,11 +178,12 @@ module uart_rx #(
 	endtask
 	
 //// FSM always block
+  // This is the main loop of the program. 
 	 always @(posedge CLK) begin
 		  if (reset) begin
 				T_RESET();
 		  end
-		  else begin
+		  else begin // each state entered here is free to assume that the reset pin is low. 
 			  case (reg_state)
 					S_ERROR: T_ERROR();
 					S_INIT: T_INIT();

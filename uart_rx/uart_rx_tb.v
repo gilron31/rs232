@@ -19,7 +19,7 @@
 // Revision:
 // Revision 0.01 - File Created
 // Additional Comments:
-// 
+//
 ////////////////////////////////////////////////////////////////////////////////
 
 module uart_rx_tb;
@@ -33,6 +33,7 @@ module uart_rx_tb;
 	localparam LP_SLOW_CLOCK_PRESCALER_BITS = 16; //ceil(log2(LP_CLK_2_BAUD_ratio))
 	localparam LP_N_SINGLE_BYTE_TEST = 50;       
 	localparam LP_N_FIFO_TEST = 50;
+	
 	// Inputs
 	reg CLK;
 	reg serial_in;
@@ -47,8 +48,8 @@ module uart_rx_tb;
 	wire error;
 	wire fifo_full;
 	wire fifo_empty;
-	wire [3:0] data_out_msd;
-	wire [3:0] data_out_lsd;
+	wire [P_DATA_WIDTH/2 - 1:0] data_out_msd;
+	wire [P_DATA_WIDTH/2 - 1:0] data_out_lsd;
 
 	// Instantiate the Unit Under Test (UUT)
 	uart_rx #(
@@ -191,8 +192,6 @@ module uart_rx_tb;
 				demo_FIFO[i*P_DATA_WIDTH +: P_DATA_WIDTH] = byte_to_send;
 		 end
 		 
-		 
-		 
 		 for (i = 0; i < test_depth; i = i + 1) begin
 				 expected_output = demo_FIFO[i*P_DATA_WIDTH +: P_DATA_WIDTH];
 				 display_next = 1;
@@ -236,7 +235,6 @@ module uart_rx_tb;
 				 test_fill_FIFO(i);
 			end
 		end
-		
 		
 		$display("Tests passed sucessfully!");
 		$finish();
