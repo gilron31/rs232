@@ -1,4 +1,4 @@
-`timescale 1ns / 100ps
+`timescale 100ns / 1ns
 //////////////////////////////////////////////////////////////////////////////////
 // Company: 
 // Engineer: 
@@ -39,7 +39,7 @@ module uart_rx #(
 	 localparam S_READ = 2'b11;
 	 localparam LP_log_N_STATES = 2;
 	 localparam LP_LOG_CYCLES_TO_RESET = 4;
-	 localparam LP_SYS_CLK_hz = 10**(9)/2;
+	 localparam LP_SYS_CLK_hz = 10**(7)/2;
 	 localparam LP_CLK_2_BAUD_ratio = LP_SYS_CLK_hz / P_BAUD;
 	 localparam LP_SLOW_CLOCK_PRESCALER_BITS = 16; //ceil(log2(LP_CLK_2_BAUD_ratio))
 	 localparam LP_READER_COUNTER = 4; //ceil(log2(P_UART_WIDTH + 2))
@@ -58,10 +58,10 @@ module uart_rx #(
 	 reg [LP_SLOW_CLOCK_PRESCALER_BITS - 1 : 0] slow_clock_counter;
 	 reg [LP_READER_COUNTER - 1 : 0] reader_counter;
 //// Assignments
-	 assign init_counter_ready = init_counter == P_CYCLES_TO_RESET;
+	 assign init_counter_ready = slow_clock_pulse & (init_counter == P_CYCLES_TO_RESET - 1);
 	 assign error = reg_error;
 	 assign int_reset = reset;
-	 assign slow_clock_pulse = slow_clock_counter == LP_CLK_2_BAUD_ratio;
+	 assign slow_clock_pulse = slow_clock_counter == (LP_CLK_2_BAUD_ratio - 1);
 	 assign start_bit_read_now = reader_counter == 0;
 	 assign stop_bit_read_now = reader_counter == P_UART_WIDTH + 1;
 //// FIFO instanciation	 
@@ -149,7 +149,6 @@ module uart_rx #(
 		end
 		// Outputs
 		reg_error <= 1'b0;
-		// Actions
 	end
 	endtask
 	
