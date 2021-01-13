@@ -78,8 +78,269 @@
 
 \begin_body
 
-\begin_layout Standard
+\begin_layout Title
+UART RX design
+\end_layout
 
+\begin_layout Section
+Outline
+\end_layout
+
+\begin_layout Standard
+This module's main goal is to allow asynchronous 
+\series bold
+serial
+\series default
+ communication between two devices which do not necessarily share the same
+ clock.
+ Therefore the receiver and transmitter both agree on a baud rate (9600b/s
+ in our specific case) which is slower then the clocks of both devices.
+ This enables the two devices to communicate without the need for a synchronizin
+g signal between them.
+ 
+\end_layout
+
+\begin_layout Standard
+\begin_inset Float figure
+placement H
+wide false
+sideways false
+status open
+
+\begin_layout Plain Layout
+\align center
+\begin_inset Graphics
+	filename system design (1).png
+	scale 40
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Plain Layout
+\align center
+\begin_inset Caption Standard
+
+\begin_layout Plain Layout
+System block design
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Plain Layout
+
+\end_layout
+
+\end_inset
+
+As seen in the figure, the FIFO is enslaved by the reader.
+ The reader does not require feedback from the FIFO.
+\end_layout
+
+\begin_layout Subsection*
+Clarifications
+\end_layout
+
+\begin_layout Itemize
+FIFO full - The FIFO iteself handles the case where a push() action is performed
+ while the FIFO is full, in that case, data will be lost but no error flag
+ will be raised (this extension can be added but it is uneccessary).
+ 
+\end_layout
+
+\begin_layout Itemize
+FIFO empty - The reader's operation is agnostic to this bit there there
+ is no need in it.
+\end_layout
+
+\begin_layout Itemize
+The combination of the two above signals indicate the state of the FIFO
+ to the user, describing all three possible states (full, half-full and
+ empty).
+ The negation of fifo_empty can be considered as the effective 
+\begin_inset Quotes eld
+\end_inset
+
+valid_out
+\begin_inset Quotes erd
+\end_inset
+
+ pin.
+\end_layout
+
+\begin_layout Section
+Reader
+\end_layout
+
+\begin_layout Standard
+Here I will outline the FSM for the Reader:
+\end_layout
+
+\begin_layout Standard
+\begin_inset Float figure
+placement H
+wide false
+sideways false
+status open
+
+\begin_layout Plain Layout
+\align center
+\begin_inset Graphics
+	filename rs232_drawio.png
+	scale 40
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Plain Layout
+\align center
+\begin_inset Caption Standard
+
+\begin_layout Plain Layout
+Reader FSM
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Subsection*
+Control pins
+\end_layout
+
+\begin_layout Standard
+The pins relevant to the control sequence of are:
+\end_layout
+
+\begin_layout Itemize
+data_in - The serial data in serves also as a control parameter.
+\end_layout
+
+\begin_layout Itemize
+reset - external reset, returns the system to init state, no matter which
+ action initially took place.
+ Also propagates the reset signal to the FIFO.
+\end_layout
+
+\begin_layout Subsection*
+Reading mode
+\end_layout
+
+\begin_layout Standard
+The reader enters reading mode once it has been to idle mode and the data_in
+ has been lowered.
+ When that happens, an internal pulse is initialized with a frequency matching
+ the baud rate (generated a multiples of the system's internal clock).
+ From that point, whenever the pulsed signal is high, another bit is sampled
+ from the data_in entry.
+ The first bit sampled is still the start bit
+\begin_inset Foot
+status open
+
+\begin_layout Plain Layout
+The pulse counter is initialized to start from half of the period in order
+ to sync to the middle of each received bit.k
+\end_layout
+
+\end_inset
+
+ (which should be low but that won't be enforced), then there are 8 date
+ bits, each sampled into a different register, together creating a bus of
+ 1 byte.
+ The last bit read is the stop bit which should be high, or else the system
+ goes into error state.
+\end_layout
+
+\begin_layout Subsection*
+Notes
+\end_layout
+
+\begin_layout Itemize
+Whenever the reset pin is high, two things happen immediately:
+\end_layout
+
+\begin_deeper
+\begin_layout Itemize
+the system goes back to init state.
+\end_layout
+
+\begin_layout Itemize
+the reset signal is being replicated and transferred to the FIFO module.
+\end_layout
+
+\end_deeper
+\begin_layout Itemize
+During the reading state, an 8 bit buffer is being written.
+\end_layout
+
+\begin_layout Itemize
+When the stop bit has been correcty identified as high, the push bit is
+ set to high, telling the FIFO module to read the 8 bits into its memory
+ and update it's counter accordingly.
+ 
+\end_layout
+
+\begin_layout Section
+FIFO
+\end_layout
+
+\begin_layout Standard
+The FIFO design describes here is nearly identical to the design describes
+ in the previous exercise.
+ 
+\end_layout
+
+\begin_layout Section
+Peripherials
+\end_layout
+
+\begin_layout Subsection*
+Inputs
+\end_layout
+
+\begin_layout Itemize
+reset button
+\end_layout
+
+\begin_layout Itemize
+rean_next button
+\end_layout
+
+\begin_layout Itemize
+serial data in
+\end_layout
+
+\begin_layout Subsection*
+Outputs
+\end_layout
+
+\begin_layout Itemize
+fifo_full LED
+\end_layout
+
+\begin_layout Itemize
+fifo_empty LED
+\end_layout
+
+\begin_layout Itemize
+error LED
+\end_layout
+
+\begin_layout Itemize
+lsd and msb digital display modules, each receiving as input the four bits
+ of the lsd/msb correspondingly.
 \end_layout
 
 \end_body
